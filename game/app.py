@@ -18,7 +18,7 @@ from .config import (
 from .fighter import ATTACK, IDLE, KO, HURT, Fighter, Intent, push_apart
 from .stage import draw_banner, draw_hud, draw_stage, draw_text, text_width
 
-TITLE_SCREEN, COUNTDOWN, FIGHT, ROUND_END, MATCH_END, PAUSED = range(6)
+TITLE_SCREEN, COUNTDOWN, FIGHT, ROUND_END, MATCH_END, PAUSED, VICTORY_IMG = range(7)
 
 # 타이틀 화면 상태
 TITLE_MENU, TITLE_NICKNAME = range(2)
@@ -43,6 +43,33 @@ def _load_logo():
         else:
             _logo_img = img
     return _logo_img
+
+
+# 승리 이미지 캐시 (sprites 폴더에 이 이름 중 하나로 넣으면 된다)
+VICTORY_IMAGE_NAMES = ("victory.png", "victory.jpg", "victory.jpeg")
+_victory_img = None
+_victory_checked = False
+
+
+def _load_victory_image():
+    """승리 이미지 로드 (캐시). 없으면 None"""
+    global _victory_img, _victory_checked
+    if _victory_checked:
+        return _victory_img
+    _victory_checked = True
+    from pathlib import Path
+    root = Path(__file__).parent.parent / "sprites"
+    for name in VICTORY_IMAGE_NAMES:
+        path = root / name
+        if path.exists():
+            img = pygame.image.load(str(path)).convert_alpha()
+            w, h = img.get_size()
+            # 화면(아래 안내 문구 자리 제외)에 비율 유지하며 맞춤
+            scale = min(SCREEN_W / w, (SCREEN_H - 30) / h)
+            _victory_img = pygame.transform.scale(
+                img, (max(1, int(w * scale)), max(1, int(h * scale))))
+            break
+    return _victory_img
 
 
 class Game:
@@ -254,6 +281,8 @@ class Game:
             self._step_round_end()
         elif self.mode == MATCH_END:
             self._step_match_end()
+        elif self.mode == VICTORY_IMG:
+            self._step_victory_img()
         elif self.mode == PAUSED:
             if self._hit("confirm"):
                 self._new_round()
@@ -368,6 +397,16 @@ class Game:
         self.p1.update(Intent(), self.p2)
         self.p2.update(Intent(), self.p1)
         if self._hit("confirm"):
+            if self.p1.wins >= WINS_NEEDED:
+                # 이겼을 때: 승리 이미지 화면으로
+                self.mode = VICTORY_IMG
+                self.pressed.clear()
+            else:
+                self._new_match()
+
+    def _step_victory_img(self) -> None:
+        # 이미지 화면에서 Enter -> 새 경기
+        if self._hit("confirm"):
             self._new_match()
 
     def _resolve(self, atk: Fighter, dfn: Fighter) -> None:
@@ -445,6 +484,8 @@ class Game:
                         (255, 212, 71) if win else (255, 107, 107))
         elif self.mode == MATCH_END:
             self._render_match_end(s)
+        elif self.mode == VICTORY_IMG:
+            self._render_victory_img(s)
         elif self.mode == PAUSED:
             self._render_paused(s)
 
@@ -466,8 +507,24 @@ class Game:
                     (255, 212, 71) if win else (255, 107, 107), 80)
         score = f"{self.p1.wins} - {self.p2.wins}"
         draw_banner(s, score, (232, 226, 240), 120, 2)
-        draw_text(s, "ENTER REMATCH", SCREEN_W // 2 - text_width("ENTER REMATCH") // 2,
+        hint = "ENTER CONTINUE" if win else "ENTER REMATCH"
+        draw_text(s, hint, SCREEN_W // 2 - text_width(hint) // 2,
                   170, (141, 132, 165), 1)
+
+    def _render_victory_img(self, s) -> None:
+        s.fill((10, 7, 16))
+        img = _load_victory_image()
+        if img:
+            iw, ih = img.get_size()
+            s.blit(img, (SCREEN_W // 2 - iw // 2, (SCREEN_H - 30 - ih) // 2))
+        else:
+            # 이미지가 없을 때 안내
+            msg = "PUT IMAGE IN SPRITES/VICTORY.PNG"
+            draw_text(s, msg, SCREEN_W // 2 - text_width(msg) // 2,
+                      SCREEN_H // 2 - 10, (255, 107, 107), 1)
+        hint = "ENTER REMATCH"
+        draw_text(s, hint, SCREEN_W // 2 - text_width(hint) // 2,
+                  SCREEN_H - 20, (141, 132, 165), 1)
 
     def _render_paused(self, s) -> None:
         veil = pygame.Surface(s.get_size(), pygame.SRCALPHA)
