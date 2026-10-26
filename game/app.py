@@ -88,6 +88,8 @@ class Game:
         self.title_anim = 0.0  # 0~1 전환 애니메이션
         self.nickname = "PLAYER"
         self.nickname_cursor = 0
+        self.enemy_name = "ENEMY"        # 적 이름
+        self.editing_enemy = False       # False=내 이름, True=적 이름 편집 중
         self.menu_index = 0  # 0=플레이, 1=닉네임
 
         self.p1 = Fighter(roll_character(self.rng), 1, SCREEN_W * 0.35)
@@ -274,20 +276,49 @@ class Game:
                     # 닉네임 설정으로 전환
                     self.title_state = TITLE_NICKNAME
                     self.title_anim = 0.0
+                    self.editing_enemy = False
+                    self.nickname_cursor = len(self.nickname)
         elif self.title_state == TITLE_NICKNAME:
-            # 닉네임 편집
+            # 지금 편집 중인 이름 (내 이름 / 적 이름)
+            text = self.enemy_name if self.editing_enemy else self.nickname
             for k in self.pressed:
                 if pygame.K_a <= k <= pygame.K_z:
-                    ch = chr(k).upper()
-                    if len(self.nickname) < 10:
-                        self.nickname = self.nickname[:self.nickname_cursor] + ch + self.nickname[self.nickname_cursor:]
+                    if len(text) < 10:
+                        text = text[:self.nickname_cursor] + chr(k).upper() + text[self.nickname_cursor:]
+                        self.nickname_cursor += 1
+                elif pygame.K_0 <= k <= pygame.K_9:
+                    if len(text) < 10:
+                        text = text[:self.nickname_cursor] + chr(k) + text[self.nickname_cursor:]
                         self.nickname_cursor += 1
                 elif k == pygame.K_BACKSPACE and self.nickname_cursor > 0:
-                    self.nickname = self.nickname[:self.nickname_cursor-1] + self.nickname[self.nickname_cursor:]
+                    text = text[:self.nickname_cursor - 1] + text[self.nickname_cursor:]
                     self.nickname_cursor -= 1
-                elif k == pygame.K_RETURN or k == pygame.K_ESCAPE:
+                elif k == pygame.K_RETURN:
+                    if not self.editing_enemy:
+                        # 내 이름 완료 -> 적 이름 입력으로
+                        self.nickname = text or "PLAYER"
+                        self.editing_enemy = True
+                        text = self.enemy_name
+                        self.nickname_cursor = len(text)
+                    else:
+                        # 적 이름 완료 -> 메뉴로
+                        self.enemy_name = text or "ENEMY"
+                        self.editing_enemy = False
+                        self.title_state = TITLE_MENU
+                        self.title_anim = 0.0
+                    break
+                elif k == pygame.K_ESCAPE:
+                    self.editing_enemy = False
                     self.title_state = TITLE_MENU
                     self.title_anim = 0.0
+                    break
+
+            # 편집한 내용을 다시 저장
+            if self.title_state == TITLE_NICKNAME:
+                if self.editing_enemy:
+                    self.enemy_name = text
+                else:
+                    self.nickname = text
 
         # 전환 애니메이션 진행
         if self.title_anim < 1.0:
@@ -396,8 +427,8 @@ class Game:
             # P1: 노란색 닉네임
             draw_text(s, self.nickname, int(self.p1.x) - text_width(self.nickname) // 2 - cam,
                       int(self.p1.y - self.p1.body_h - 16), (255, 212, 71), 1)
-            # P2: 빨간색 ENEMY
-            draw_text(s, "ENEMY", int(self.p2.x) - text_width("ENEMY") // 2 - cam,
+            # P2: 빨간색 적 이름
+            draw_text(s, self.enemy_name, int(self.p2.x) - text_width(self.enemy_name) // 2 - cam,
                       int(self.p2.y - self.p2.body_h - 16), (255, 107, 107), 1)
 
         if self.mode == TITLE_SCREEN:
@@ -487,10 +518,12 @@ class Game:
 
         elif self.title_state == TITLE_NICKNAME:
             # 닉네임 설정 화면
-            draw_text(s, "NAME", SCREEN_W // 2 - text_width("NAME", 2) // 2, 100, (255, 212, 71), 2)
+            label = "ENEMY NAME" if self.editing_enemy else "YOUR NAME"
+            draw_text(s, label, SCREEN_W // 2 - text_width(label, 2) // 2, 100, (255, 212, 71), 2)
 
-            # 닉네임 입력 필드
-            nick_display = self.nickname + "_"
+            # 이름 입력 필드
+            cur = self.enemy_name if self.editing_enemy else self.nickname
+            nick_display = cur + "_"
             draw_text(s, nick_display, SCREEN_W // 2 - text_width(nick_display, 2) // 2, 140, (232, 226, 240), 2)
 
             draw_text(s, "A-Z TYPE   BACKSPACE DELETE   ENTER DONE",
