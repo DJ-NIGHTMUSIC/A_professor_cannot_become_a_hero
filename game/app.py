@@ -6,7 +6,11 @@ P1 = 키보드, P2 = AI
 """
 from __future__ import annotations
 
+import os
 import random
+
+# Windows DPI awareness must be set before pygame/SDL initializes.
+os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
 
 import pygame
 
@@ -72,6 +76,17 @@ def _load_victory_image():
     return _victory_img
 
 
+def display_geometry(win_w: int, win_h: int) -> tuple[float, int, int]:
+    """창 크기에 맞는 균등 배율と表示バッファ寸法を返す。"""
+    ideal = min(max(1, win_w) / SCREEN_W, max(1, win_h) / SCREEN_H)
+    if ideal < 1.0:
+        scale = ideal
+    else:
+        whole = max(1, int(ideal))
+        scale = float(whole) if ideal - whole < 0.05 else ideal
+    return scale, max(1, round(SCREEN_W * scale)), max(1, round(SCREEN_H * scale))
+
+
 class Game:
     def __init__(self, headless: bool = False, fullscreen: bool = True):
         self.headless = headless
@@ -126,39 +141,45 @@ class Game:
 
     # ---------------------------------------------------------------- 표시
     def _open_window(self, fullscreen: bool) -> None:
-        """창을 연다. SCALED 는 (0,0) 크기를 못 받으므로 쓰지 않는다."""
+        """열려 있는 데스크톱 크기에 맞는 창 또는 보더리스 전체화면을 연다."""
         if fullscreen:
-            self.window = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+            flags = getattr(pygame, "FULLSCREEN_DESKTOP", pygame.FULLSCREEN)
+            try:
+                self.window = pygame.display.set_mode((0, 0), flags)
+            except pygame.error:
+                self.fullscreen = False
+                self.window = pygame.display.set_mode(
+                    (SCREEN_W * 2, SCREEN_H * 2), pygame.RESIZABLE)
         else:
-            self.window = pygame.display.set_mode((SCREEN_W * 2, SCREEN_H * 2),
-                                                  pygame.RESIZABLE)
+            info = pygame.display.Info()
+            max_w = max(SCREEN_W, int(info.current_w * 0.95))
+            max_h = max(SCREEN_H, int(info.current_h * 0.95))
+            # 가능한 가장 큰 정수 배율 창을 선택한다. 작은 데스크톱에서도 최소 내부 크기.
+            scale = max(1, min(max_w // SCREEN_W, max_h // SCREEN_H))
+            self.window = pygame.display.set_mode(
+                (SCREEN_W * scale, SCREEN_H * scale), pygame.RESIZABLE)
 
     def _apply_display(self, fullscreen: bool) -> None:
-        """창 크기에 맞춰 확대 배율을 다시 계산한다 (전체화면 전환 시 호출)"""
+        """실제 창 크기에 맞춰 확대/축소 버퍼를 다시 계산한다."""
+        self.window = pygame.display.get_surface() or self.window
         win_w, win_h = self.window.get_size()
-
-        # 균등 비율로 최대한 크게: 한 축을 기준으로 비율을 정하고 양쪽에 같이 쓴다
-        ideal = min(win_w / SCREEN_W, win_h / SCREEN_H)
-        whole = max(1, int(ideal))
-
-        # 정수 배율이 거의 정확히 맞으면 정수로 (픽sel 선 유지)
-        # 아니면 분수로 (여백 없이 화면을 꽉 채움)
-        if ideal - whole < 0.05:
-            scale = float(whole)
-        else:
-            scale = ideal
-
-        vw = max(1, round(SCREEN_W * scale))
-        vh = max(1, round(SCREEN_H * scale))
-        # 확대용 중간 버퍼 (창 크기와 달라도 안전하게 동작)
+        scale, vw, vh = display_geometry(win_w, win_h)
         self.view = pygame.Surface((vw, vh)).convert()
         self.view.fill((7, 5, 12))
         self.scale = scale
+
+    def _sync_window(self) -> None:
+        """화면 표면이 교체된 뒤 현재 디스플레이 표면과 뷰를 동기화한다."""
+        current = pygame.display.get_surface()
+        if current is not None and current is not self.window:
+            self.window = current
+            self._apply_display(self.fullscreen)
 
     def toggle_fullscreen(self) -> None:
         """전체화면 / 창 모드 전환"""
         self.fullscreen = not self.fullscreen
         self._open_window(self.fullscreen)
+        self._sync_window()
         self._apply_display(self.fullscreen)
 
     def _blit_view(self) -> None:
@@ -167,7 +188,7 @@ class Game:
         vw, vh = self.view.get_size()
 
         self.window.fill((7, 5, 12))
-        if (win_w, win_h) == (vw, vh):
+        if self.scale == 1.0 and (win_w, win_h) == (SCREEN_W, SCREEN_H):
             self.window.blit(self.screen, (0, 0))
             return
 
@@ -186,8 +207,12 @@ class Game:
                 # 창 모드에서 크기가 바뀌면 배율 재계산
                 if not self.fullscreen:
                     self.window = pygame.display.set_mode(
-                        (max(640, e.w), max(360, e.h)), pygame.RESIZABLE)
+                        (max(1, e.w), max(1, e.h)), pygame.RESIZABLE)
+                    self._sync_window()
                     self._apply_display(False)
+            elif e.type == pygame.WINDOWFOCUSLOST:
+                self.held.clear()
+                self.pressed.clear()
             elif e.type == pygame.KEYDOWN:
                 if e.key == pygame.K_F11:
                     self.toggle_fullscreen()
@@ -245,6 +270,22 @@ class Game:
         self.p2.hp = float(self.p2.ch.max_hp)
         self.ai.reset()
         self.pressed.clear()
+        self.held.clear()
+        for f in (self.p1, self.p2):
+            f.state_frame = 0
+            f.move_frame = 0
+            f.hit_used = False
+            f.cooldown = {"light": 0, "heavy": 0, "special": 0}
+            f.flash = 0
+            f.dash_timer = 0
+            f.dash_dir = 0
+            f.dash_cooldown = 0
+            f.last_left_time = -999
+            f.last_right_time = -999
+            f.anim_name = "idle"
+            f.anim_frame = f.anim_tick = 0
+            f.attack_buffer = {"light": 0, "heavy": 0, "special": 0}
+            f.jump_buffer = 0
 
     def _end_round(self, winner: int) -> None:
         if winner == 1:
@@ -285,7 +326,12 @@ class Game:
             self._step_victory_img()
         elif self.mode == PAUSED:
             if self._hit("confirm"):
-                self._new_round()
+                # ENTER GIVE UP: 경기 포기 후 타이틀로 돌아간다.
+                self.mode = TITLE_SCREEN
+                self.title_state = TITLE_MENU
+                self.menu_index = 0
+                self.held.clear()
+                self.pressed.clear()
 
     def _step_title(self) -> None:
         self.p1.update(Intent(), self.p2)
@@ -368,8 +414,7 @@ class Game:
         self.p2.update(ai, self.p1)
 
         # 근접 판정
-        self._resolve(self.p1, self.p2)
-        self._resolve(self.p2, self.p1)
+        self._resolve_pair()
         push_apart(self.p1, self.p2)
 
         self.round_time -= 1 / 60.0
@@ -409,6 +454,27 @@ class Game:
         if self._hit("confirm"):
             self._new_match()
 
+    def _resolve_pair(self) -> None:
+        """양쪽 공격의 유효 판정을 먼저 수집한 뒤 피해를 적용해 트레이드를 보장한다."""
+        fighters = ((self.p1, self.p2), (self.p2, self.p1))
+        hits = []
+        for atk, dfn in fighters:
+            if atk.hit_used:
+                continue
+            box = atk.hitbox()
+            if box is not None and box.colliderect(dfn.hurtbox()):
+                hits.append((atk, dfn, atk.move, dfn.blocking))
+        for atk, dfn, move, was_blocking in hits:
+            if move is None:
+                continue
+            atk.hit_used = True
+            if was_blocking:
+                dfn.take_block(atk.x, move)
+                atk.hitstop = max(atk.hitstop, 4)
+            else:
+                dfn.take_damage(atk.ch.damage(move.damage), atk.x, move)
+                atk.hitstop = max(atk.hitstop, move.hitstop)
+
     def _resolve(self, atk: Fighter, dfn: Fighter) -> None:
         if atk.hit_used:
             return
@@ -442,7 +508,7 @@ class Game:
         stage_extra = 80  # WALL_L/R 확장분
         max_cam = stage_extra
         min_cam = -stage_extra
-
+        
         target = max(min_cam, min(max_cam, target))
 
         # 부드럽게 이동 (lerp)
@@ -611,6 +677,3 @@ class Game:
             pygame.display.flip()
             self.clock.tick(FPS)
         pygame.quit()
-
-
-import os  # noqa: E402  (headless 설정용)
