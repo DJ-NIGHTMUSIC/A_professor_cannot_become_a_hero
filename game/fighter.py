@@ -66,17 +66,17 @@ def build_moves(ch: Character) -> dict[str, Move]:
     return {
         "light": Move(
             "light", "JAB",
-            4, 30, 8, 6 * p, 40 * r, 22, 50,
+            4, 6, 8, 6 * p, 40 * r, 22, 50,
             13, 9, 280, 120, 5, 70, 0, 0, 0, True, True,
         ),
         "heavy": Move(
             "heavy", "SWING",
-            6, 30, 14, 14 * p, 56 * r, 30, 38,
+            6, 8, 14, 14 * p, 56 * r, 30, 38,
             21, 15, 500, 350, 8, 200, 0, 0, 0, True, False,
         ),
         "special": Move(
             "special", ch.arch.title + " BURST",
-            10, 30, 22, 18 * p, 62 * r, 44, 32,
+            10, 10, 22, 18 * p, 62 * r, 44, 32,
             26, 17, 650, 420, 10, 250, -260, 52, 3, False, False,
             is_special=True,
         ),
@@ -162,10 +162,12 @@ class Fighter:
         self.last_left_time = -999
         self.last_right_time = -999
         self.DASH_WINDOW = 12  # 12프레임(0.2초) 이내 연타 시 대시
-        self.DASH_SPEED_MULT = 2.5
+        self.DASH_SPEED_MULT = 1.8
         self.DASH_DURATION = 8
         self.dash_timer = 0
         self.dash_dir = 0
+        self.attack_buffer = {"light": 0, "heavy": 0, "special": 0}
+        self.jump_buffer = 0
 
     # ------------------------------------------------------------ 상태
     @property
@@ -200,82 +202,23 @@ class Fighter:
 
     def hurtbox(self) -> pygame.Rect:
         if self.state == SIT:
-            # 회피 모션: 너비 고정, 높이만 낮게 (아래로 숙임)
             h = int(self.ch.char_h * 0.35)
             w = int(self.body_w)
-            return pygame.Rect(int(self.x - w / 2), int(self.y - h), w, h)
+            return pygame.Rect(
+                int(self.x - w / 2),
+                int(self.y - h),
+                w,
+                h,
+            )
+
         h = CROUCH_H * (self.ch.char_h / 96.0) if self.state == CROUCH else self.body_h
         w = self.body_w
-        return pygame.Rect(int(self.x - w / 2), int(self.y - h), int(w), int(h))
-
-    def hitbox(self) -> pygame.Rect | None:
-        if not self.move or self.state != ATTACK:
-            return None
-        m = self.move
-        t = self.move_frame
-        if t < m.startup or t >= m.startup + m.active:
-            return None
-        s = self.ch.char_h / 96.0
-        reach = m.reach * s
-        # 팔이 앞으로 뻗으므로 판정 시작점을 몸통 앞쪽으로 밀어준다
-        x = self.x + self.body_w * 0.5 if self.facing > 0 else self.x - self.body_w * 0.5 - reach
-        return pygame.Rect(int(x), int(self.y - m.box_top * s), int(reach), int(m.height * s))
-
-    # ------------------------------------------------------------ 행동
-    def try_move(self, key: str, facing: int) -> bool:
-        if not self.can_act or self.cooldown[key] > 0:
-            return False
-        m = self.moves[key]
-        if not self.grounded and not m.air_ok:
-            return False
-        self.move = m
-        self.state = ATTACK
-        self.state_frame = 0
-        self.move_frame = 0
-        self.hit_used = False
-        self.blocking = False
-        self.facing = facing
-        # heavy는 kick, 나머지는 fight
-        self.anim_name = "kick" if key == "heavy" else "fight"
-        self.anim_frame = 0
-        self.anim_tick = 0
-        self.vx *= 0.4
-        return True
-
-    def take_damage(self, dmg: float, from_x: float, m: Move) -> None:
-        self.hp = max(0.0, self.hp - max(1.0, dmg * self.ch.arch.defense))
-        d = 1 if self.x >= from_x else -1
-        self.vx = d * m.knockback / self.ch.arch.weight
-        self.vy = min(self.vy, 0) - m.launch / self.ch.arch.weight
-        self.state = HURT
-        self.state_frame = 0
-        self.move = None
-        self.hitstun = m.hitstun
-        self.blockstun = 0
-        self.blocking = False
-        self.hitstop = m.hitstop
-        self.flash = 4
-        self.burst(int(self.x + d * 12), int(self.y - self.body_h * 0.55), 10, (255, 235, 190))
-        if self.hp <= 0:
-            self.state = KO
-            self.hitstun = 0
-
-    def take_block(self, from_x: float, m: Move) -> None:
-        d = 1 if self.x >= from_x else -1
-        self.vx = d * m.knockback / self.ch.arch.weight * BLOCK_PUSH
-        self.blockstun = m.blockstun
-        self.hitstop = 4
-        self.burst(int(self.x - d * 14), int(self.y - self.body_h * 0.6), 8, (150, 210, 255))
-
-    def burst(self, x: int, y: int, n: int, color) -> None:
-        for _ in range(n):
-            a = random.random() * math.tau
-            sp = random.uniform(70, 240)
-            self.particles.append(Particle(
-                x, y, math.cos(a) * sp, math.sin(a) * sp, random.randint(8, 20), color,
-            ))
-
-    # ------------------------------------------------------------ 업데이트
+        return pygame.Rect(
+            int(self.x - w / 2),
+            int(self.y - h),
+            int(w),
+            int(h),
+        )
     def update(self, it: Intent, foe: "Fighter") -> None:
         if self.hitstop > 0:
             self.hitstop -= 1
@@ -283,28 +226,30 @@ class Fighter:
 
         self.state_frame += 1
         self.flash = max(0, self.flash - 1)
-        for k in self.cooldown:
-            if self.cooldown[k] > 0:
-                self.cooldown[k] -= 1
+
+        for key in self.cooldown:
+            if self.cooldown[key] > 0:
+                self.cooldown[key] -= 1
+
         if self.hitstun > 0:
             self.hitstun -= 1
         if self.blockstun > 0:
             self.blockstun -= 1
-        self.step_particles()
 
+        self.step_particles()
         want = 1 if foe.x >= self.x else -1
-        
-        # 이동 방향 결정
+
         moving_left = it.left and not it.right
         moving_right = it.right and not it.left
-        moving_backward = (moving_left and want > 0) or (moving_right and want < 0)
-        
+        moving_backward = (
+            (moving_left and want > 0)
+            or (moving_right and want < 0)
+        )
+
         if self.state not in (ATTACK, KO):
-            # 뒤로 갈 때는 이동 방향을 향함 (키를 뗀 후에도 유지)
             if moving_backward and self.grounded and self.can_act:
                 self.facing = -want
             elif not moving_backward:
-                # 앞으로 갈 때는 상대를 향함 (키를 뗀 후에도 유지)
                 self.facing = want
 
         if self.state == KO:
@@ -324,38 +269,44 @@ class Fighter:
             anim = self.anims.get("sit")
             if anim and len(anim) >= 2:
                 if it.down:
-                    # 키 누름: sit_2 (앉은 자세)로 전환 및 유지
                     self.set_anim("sit")
                     self.anim_frame = 1
                     self.anim_tick = 0
                 else:
-                    # 키 뗌: sit_1 (중립)로 잠시 표시 후 IDLE
                     self.set_anim("sit")
                     self.anim_frame = 0
                     self.anim_tick = 0
                     self.state = IDLE
+            else:
+                self.state = IDLE
             return
 
         if self.state == ATTACK and self.move:
-            self.tick_attack()
+            self.tick_attack(foe)
             return
 
-        # ---- 자유 행동 ----
-        # SIT/회피: 아래키(S) + 행동 가능 시
+        # 아래 방향키: 앉기
         if it.down and self.grounded and self.can_act:
             self.state = SIT
             self.state_frame = 0
-            self.vx *= 0.2  # 회피 중 감속
+            self.vx *= 0.2
             self.tick_anim("sit")
             return
 
-        self.blocking = it.block and self.grounded and self.can_act
+        # 방어
+        self.blocking = (
+            it.block or (self.blocking and self.blockstun > 0)
+        ) and self.grounded and (
+            self.can_act or self.blockstun > 0
+        )
+
         if self.blocking:
             self.vx *= GROUND_FRICTION
             self.physics()
             self.tick_anim("idle")
             return
 
+        # 위 방향키: 점프
         if it.up and self.grounded and self.can_act:
             d = -1 if it.left else (1 if it.right else 0)
             self.vy = -self.ch.jump_v
@@ -365,44 +316,61 @@ class Fighter:
             self.tick_anim("idle")
             return
 
-        if it.special and self.try_move("special", want):
-            return
-        if it.heavy and self.try_move("heavy", want):
-            return
-        if it.light and self.try_move("light", want):
-            return
+        # 공격
+        for key in ("special", "heavy", "light"):
+            if getattr(it, key) and self.try_move(key, want):
+                return
 
-        # ---- 대시 감지 (연타) ----
+        # 방향키 연타 대시
         if self.grounded and self.can_act:
-            # 왼쪽 대시
             if it.pressed_left:
-                if self.state_frame - self.last_left_time <= self.DASH_WINDOW and self.last_left_time > 0:
+                if (
+                    self.state_frame - self.last_left_time
+                    <= self.DASH_WINDOW
+                    and self.last_left_time > 0
+                ):
                     self.dash_timer = self.DASH_DURATION
                     self.dash_dir = -1
-                    self.vx = -self.ch.walk_speed * self.DASH_SPEED_MULT
+                    self.vx = (
+                        -self.ch.walk_speed * self.DASH_SPEED_MULT
+                    )
                     self.state = WALK
+
                 self.last_left_time = self.state_frame
-            # 오른쪽 대시
+
             if it.pressed_right:
-                if self.state_frame - self.last_right_time <= self.DASH_WINDOW and self.last_right_time > 0:
+                if (
+                    self.state_frame - self.last_right_time
+                    <= self.DASH_WINDOW
+                    and self.last_right_time > 0
+                ):
                     self.dash_timer = self.DASH_DURATION
                     self.dash_dir = 1
-                    self.vx = self.ch.walk_speed * self.DASH_SPEED_MULT
+                    self.vx = (
+                        self.ch.walk_speed * self.DASH_SPEED_MULT
+                    )
                     self.state = WALK
+
                 self.last_right_time = self.state_frame
 
-        # 대시 타이머 감소
         if self.dash_timer > 0:
             self.dash_timer -= 1
-            # 대시 중에도 방향 유지
-            self.vx = self.dash_dir * self.ch.walk_speed * self.DASH_SPEED_MULT
+            self.vx = (
+                self.dash_dir
+                * self.ch.walk_speed
+                * self.DASH_SPEED_MULT
+            )
             self.state = WALK
         else:
             self.dash_dir = 0
 
-        if it.left != it.right:
+        if self.dash_timer > 0:
+            self.state = WALK
+        elif it.left != it.right:
             d = -1 if it.left else 1
-            self.vx = d * self.ch.walk_speed * (0.78 if d != want else 1.0)
+            self.vx = d * self.ch.walk_speed * (
+                0.78 if d != want else 1.0
+            )
             self.state = WALK
         else:
             self.vx *= GROUND_FRICTION
@@ -412,9 +380,11 @@ class Fighter:
             self.state = JUMP if self.vy < 0 else FALL
 
         self.physics()
-        self.tick_anim("walk" if self.state == WALK else "idle")
+        self.tick_anim(
+            "walk" if self.state == WALK else "idle"
+        )
 
-    def tick_attack(self) -> None:
+    def tick_attack(self, foe: "Fighter") -> None:
         m = self.move
         t = self.move_frame
         self.move_frame += 1
@@ -426,151 +396,246 @@ class Fighter:
 
         if anim:
             if len(anim) >= 4:
-                # 4프레임 공통: 1(중립) -> 2 -> 3(메인) -> 4(중립직전) -> 1
+                # 시작 전: 중립 프레임
                 if t < m.startup:
-                    # 시작 전: 프레임 0 (중립)
                     self.set_anim(anim_name)
                     self.anim_frame = 0
+
+                # 활성 초반: 준비 프레임
                 elif t < m.startup + m.active // 3:
-                    # 활성 초반: 프레임 1 (준비)
                     self.set_anim(anim_name)
                     self.anim_frame = 1
+
+                # 활성 중반: 공격 프레임
                 elif t < m.startup + 2 * m.active // 3:
-                    # 활성 중반: 프레임 2 (메인 타격)
                     self.set_anim(anim_name)
                     self.anim_frame = 2
+
+                # 활성 후반: 공격 마무리
                 elif t < m.startup + m.active:
-                    # 활성 후반: 프레임 3 (중립 직전)
                     self.set_anim(anim_name)
                     self.anim_frame = 3
-                else:
-                    # 회복: 프레임 0 (중립)
-                    self.set_anim(anim_name)
-                    self.anim_frame = 0
-            elif len(anim) >= 2:
-                # 2프레임 폴백: 기존 로직
-                if t < m.startup:
-                    self.set_anim(anim_name)
-                    self.anim_frame = 0
-                elif t < m.startup + m.active:
-                    self.set_anim(anim_name)
-                    self.anim_frame = 1
+
                 else:
                     self.set_anim(anim_name)
                     self.anim_frame = 0
 
-        if m.startup <= t < m.startup + m.active:
-            s = self.ch.char_h / 96.0
-            self.vx = self.facing * m.self_x * s
-            if m.self_y:
-                self.vy = m.self_y * s
+            else:
+                self.tick_anim(anim_name)
 
-        self.physics()
-
+        # 공격이 끝났으면 상태 초기화
         if self.move_frame >= m.total:
-            self.cooldown[m.key] = m.cooldown
             self.move = None
-            self.state = IDLE if self.grounded else (JUMP if self.vy < 0 else FALL)
+            self.move_frame = 0
+            self.hit_used = False
 
+            if self.alive:
+                self.state = IDLE
+                self.state_frame = 0
+
+            self.vx *= 0.5
+            self.tick_anim("idle")
+            return
+
+        # 활성 프레임에 공격 판정
+        if (
+            m.startup <= t < m.startup + m.active
+            and not self.hit_used
+        ):
+            if self.try_hit(foe, m):
+                self.hit_used = True
+
+    def try_move(self, key: str, want: int) -> bool:
+        m = self.moves[key]
+
+        if self.cooldown[key] > 0:
+            return False
+
+        if not self.grounded and not m.air_ok:
+            return False
+
+        if self.state == CROUCH and not m.crouch_ok:
+            return False
+
+        self.move = m
+        self.move_frame = 0
+        self.hit_used = False
+        self.state = ATTACK
+        self.state_frame = 0
+        self.facing = want
+        self.vx = m.self_x * want
+        self.vy = m.self_y
+        self.cooldown[key] = m.cooldown
+
+        return True
+
+    def try_hit(self, foe: "Fighter", m: Move) -> bool:
+        if not foe.alive:
+            return False
+
+        # 공격 방향과 상대 위치 확인
+        dx = foe.x - self.x
+        if dx * self.facing < 0:
+            return False
+
+        if abs(dx) > m.reach + foe.body_w / 2:
+            return False
+
+        # 높이 판정
+        attack_y = self.y - m.box_top
+        foe_top = foe.y - foe.body_h
+
+        if attack_y < foe.y - m.height:
+            return False
+
+        if attack_y > foe.y:
+            return False
+
+        # 방어 중이면 피해 감소
+        if foe.blocking and foe.grounded:
+            foe.blockstun = m.blockstun
+            foe.vx = self.facing * BLOCK_PUSH
+            foe.hitstop = m.hitstop
+            foe.state = BLOCK
+            foe.state_frame = 0
+            foe.hp = max(0, foe.hp - m.damage * 0.15)
+            foe.flash = 3
+            return True
+
+        # 일반 피격
+        foe.hp = max(0, foe.hp - m.damage)
+        foe.hitstun = m.hitstun
+        foe.vx = self.facing * m.knockback
+        foe.vy = -m.launch
+        foe.hitstop = m.hitstop
+        foe.state = HURT if foe.hp > 0 else KO
+        foe.state_frame = 0
+        foe.flash = 6
+
+        self.hitstop = m.hitstop
+        foe.spawn_hit_particles()
+
+        return True
     def physics(self) -> None:
-        self.x += self.vx / 60.0
-        self.y += self.vy / 60.0
+        """중력, 이동, 바닥 및 벽 충돌 처리."""
+        if not self.grounded or self.vy < 0:
+            self.vy += GRAVITY
+            self.y += self.vy
 
-        if not self.grounded:
-            self.vy += GRAVITY / 60.0
-            self.vx *= AIR_FRICTION
-        else:
-            self.vx *= GROUND_FRICTION
-        if self.hitstun > 0:
-            self.vx *= HITSTUN_FRICTION
-
-        self.x = max(WALL_L, min(WALL_R, self.x))
         if self.y >= FLOOR_Y:
             self.y = FLOOR_Y
-            self.vy = 0
+            self.vy = 0.0
 
-    def step_particles(self) -> None:
-        for p in self.particles:
-            p.x += p.vx / 60.0
-            p.y += p.vy / 60.0
-            p.vy += 800 / 60.0
-            p.life -= 1
-        self.particles = [p for p in self.particles if p.life > 0]
+        self.x += self.vx
 
-    # ------------------------------------------------------------ 애니메이션
-    def tick_anim(self, name: str) -> None:
-        if self.anim_name != name:
-            self.anim_name = name
-            self.anim_frame = 0
-            self.anim_tick = 0
-        anim = self.anims[name]
-        if len(anim) == 0:
-            return
-        self.anim_tick += 1
-        if self.anim_tick >= anim.ticks[self.anim_frame]:
-            self.anim_tick = 0
-            self.anim_frame = (self.anim_frame + 1) % len(anim)
+        if self.grounded:
+            self.vx *= GROUND_FRICTION
+        else:
+            self.vx *= AIR_FRICTION
+
+        half_w = self.body_w / 2
+        self.x = max(WALL_L + half_w, min(WALL_R - half_w, self.x))
 
     def set_anim(self, name: str) -> None:
-        """존재하지 않는 애니메이션이면 idle 로 폴백한다"""
-        if name not in self.anims:
-            name = "idle"
+        """애니메이션이 바뀔 때 프레임을 초기화한다."""
         if self.anim_name != name:
             self.anim_name = name
             self.anim_frame = 0
             self.anim_tick = 0
 
-    # ------------------------------------------------------------ 렌더
-    def draw(self, surf: pygame.Surface, cam: int = 0) -> None:
-        if self.anim_name not in self.anims:
-            self.anim_name = "idle"
-        anim = self.anims[self.anim_name]
-        fi = anim.frames[self.anim_frame % len(anim)]
-        img = fi.surface
-        w, h = img.get_size()
+    def tick_anim(self, name: str) -> None:
+        """현재 애니메이션의 프레임을 진행한다."""
+        self.set_anim(name)
 
-        # 카메라 오프셋 적용
-        draw_x = self.x - cam
+        anim = self.anims.get(name)
+        if not anim:
+            return
 
-        # 그림자
-        lift = min(1.0, max(0.0, (FLOOR_Y - self.y) / 120.0))
-        sw = int(self.body_h * 0.40 * (1 - lift * 0.45))
-        sh = max(2, int(3 - lift * 1.2))
-        if sw > 2:
-            shade = pygame.Surface((sw, sh), pygame.SRCALPHA)
-            shade.fill((0, 0, 0, 110))
-            surf.blit(shade, (int(draw_x - sw / 2), int(FLOOR_Y - sh + 1)))
+        self.anim_tick += 1
 
-        # 앵커 정렬: 머리 중심 = x, 발바닥 = y
-        if self.facing < 0:
-            img = pygame.transform.flip(img, True, False)
-            ax = w - fi.head_px
-        else:
-            ax = fi.head_px
-        rect = img.get_rect(topleft=(int(draw_x - ax), int(self.y - fi.foot_px)))
+        frame_count = len(anim)
+        if frame_count <= 0:
+            return
 
-        if self.flash > 0:
-            img = img.copy()
-            img.fill((255, 255, 255, 0), None, pygame.BLEND_RGB_MAX)
-        surf.blit(img, rect)
+        # 프레임 속도 조절
+        frame_delay = 6
+
+        if self.anim_tick >= frame_delay:
+            self.anim_tick = 0
+            self.anim_frame = (self.anim_frame + 1) % frame_count
+
+    def spawn_hit_particles(self) -> None:
+        """피격 효과 파티클 생성."""
+        for _ in range(8):
+            angle = random.uniform(0, math.tau)
+            speed = random.uniform(1.5, 4.5)
+
+            self.particles.append(
+                Particle(
+                    x=self.x,
+                    y=self.y - self.body_h * 0.55,
+                    vx=math.cos(angle) * speed,
+                    vy=math.sin(angle) * speed,
+                    life=random.randint(8, 16),
+                    color=(255, 210, 90),
+                )
+            )
+
+    def step_particles(self) -> None:
+        """파티클 위치와 수명을 갱신한다."""
+        alive_particles = []
 
         for p in self.particles:
-            if p.life % 4 < 2:
-                surf.fill(p.color, (int(p.x - cam), int(p.y), 2, 2))
+            p.x += p.vx
+            p.y += p.vy
+            p.vy += 0.15
+            p.life -= 1
 
+            if p.life > 0:
+                alive_particles.append(p)
 
-def push_apart(a: Fighter, b: Fighter) -> None:
-    """두 캐릭터가 겹치지 않게 서로 밀어낸다 (공중일 때는 통과 허용)"""
-    # 공중 상태(JUMP, FALL)일 때는 서로 통과 가능
-    if a.state in (JUMP, FALL) or b.state in (JUMP, FALL):
-        return
-    gap = (a.body_w + b.body_w) / 2
-    d = b.x - a.x
-    if abs(d) >= gap:
-        return
-    s = 1 if d >= 0 else -1
-    push = (gap - abs(d)) / 2
-    a.x -= s * push
-    b.x += s * push
-    a.x = max(WALL_L, min(WALL_R, a.x))
-    b.x = max(WALL_L, min(WALL_R, b.x))
+        self.particles = alive_particles
+
+    def draw(self, screen: pygame.Surface) -> None:
+        """캐릭터와 파티클을 화면에 그린다."""
+        for p in self.particles:
+            pygame.draw.circle(
+                screen,
+                p.color,
+                (int(p.x), int(p.y)),
+                max(1, p.life // 4),
+            )
+
+        anim = self.anims.get(self.anim_name)
+        if not anim:
+            return
+
+        # Animation 구현에 따라 프레임 가져오는 방식이 다를 수 있음.
+        # 기존 프로젝트의 draw()가 있다면 그 구현을 유지하는 것이 안전함.
+        try:
+            frame = anim[self.anim_frame]
+        except (TypeError, IndexError, KeyError):
+            return
+
+        if frame is None:
+            return
+
+        image = frame
+
+        if not isinstance(image, pygame.Surface):
+            return
+
+        if self.facing < 0:
+            image = pygame.transform.flip(image, True, False)
+
+        if self.flash > 0:
+            image = image.copy()
+            image.fill(
+                (255, 255, 255, 0),
+                special_flags=pygame.BLEND_RGBA_ADD,
+            )
+
+        rect = image.get_rect(
+            midbottom=(int(self.x), int(self.y))
+        )
+        screen.blit(image, rect)
