@@ -50,3 +50,16 @@
 [2026-11-09 20:49:24] MATCH no=2 player=HERO enemy=VILLAIN result=WIN score=2-1 duration_sec=47
 [2026-11-09 20:49:38] MATCH_ABANDONED no=3 duration_sec=13
 [2026-11-09 20:49:38] SESSION_END no=8 session_sec=185 matches=2 wins=1 losses=1
+[2026-11-09 22:17:56] SESSION_START no=9
+[2026-11-09 22:19:25] ROUND match=1 round=1 winner=PLAYER time_left=42 hp_left=3
+[2026-11-09 22:19:41] ROUND match=1 round=2 winner=ENEMY time_left=47 hp_left=0
+[2026-11-09 22:20:04] ROUND match=1 round=3 winner=PLAYER time_left=42 hp_left=3
+[2026-11-09 22:20:06] MATCH no=1 player=NIGHTMUSIC enemy=NIGHTMUSIC result=WIN score=2-1 duration_sec=60
+[2026-11-09 22:20:40] MATCH_ABANDONED no=2 duration_sec=30
+[2026-11-09 22:20:40] SESSION_END no=9 session_sec=163 matches=1 wins=1 losses=0
+[2026-11-09 22:20:43] SESSION_START no=10
+[2026-11-09 22:20:49] SESSION_END no=10 session_sec=5 matches=0 wins=0 losses=0
+[2026-11-09 22:20:51] SESSION_START no=11
+[2026-11-09 22:21:02] SESSION_END no=11 session_sec=10 matches=0 wins=0 losses=0
+[2026-11-09 22:21:04] SESSION_START no=12
+[2026-11-09 22:21:12] SESSION_END no=12 session_sec=7 matches=0 wins=0 losses=0
