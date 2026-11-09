@@ -7,7 +7,6 @@
 ```bash
 pip install -r requirements.txt
 python main.py
-& "C:\Users\USER\AppData\Local\Programs\Python\Python314\python.exe" main.py --window
 ```
 
 기본은 **전체화면**으로 실행됩니다.

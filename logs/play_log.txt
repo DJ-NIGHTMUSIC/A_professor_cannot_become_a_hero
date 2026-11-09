@@ -8,3 +8,13 @@
 [2026-11-09 20:09:40] MATCH no=3 player=JJH enemy=AKY result=WIN score=2-0 duration_sec=33
 [2026-11-09 20:11:22] MATCH_ABANDONED no=4 duration_sec=98
 [2026-11-09 20:11:22] SESSION_END no=1 session_sec=255 matches=2 wins=2 losses=0
+[2026-11-09 20:21:28] SESSION_START no=2
+[2026-11-09 20:21:35] SESSION_END no=2 session_sec=7 matches=0 wins=0 losses=0
+[2026-11-09 20:21:39] SESSION_START no=3
+[2026-11-09 20:21:46] SESSION_END no=3 session_sec=6 matches=0 wins=0 losses=0
+[2026-11-09 20:21:49] SESSION_START no=4
+[2026-11-09 20:22:03] ROUND match=1 round=1 winner=ENEMY time_left=54 hp_left=0
+[2026-11-09 20:22:16] ROUND match=1 round=2 winner=ENEMY time_left=52 hp_left=0
+[2026-11-09 20:22:18] MATCH no=1 player=PLAYER enemy=ENEMY result=LOSE score=0-2 duration_sec=22
+[2026-11-09 20:22:29] MATCH_ABANDONED no=2 duration_sec=10
+[2026-11-09 20:22:29] SESSION_END no=4 session_sec=40 matches=1 wins=0 losses=1
