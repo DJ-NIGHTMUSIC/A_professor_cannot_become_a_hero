@@ -18,3 +18,25 @@
 [2026-11-09 20:22:18] MATCH no=1 player=PLAYER enemy=ENEMY result=LOSE score=0-2 duration_sec=22
 [2026-11-09 20:22:29] MATCH_ABANDONED no=2 duration_sec=10
 [2026-11-09 20:22:29] SESSION_END no=4 session_sec=40 matches=1 wins=0 losses=1
+[2026-11-09 20:40:24] SESSION_START no=5
+[2026-11-09 20:41:11] ROUND match=1 round=1 winner=ENEMY time_left=50 hp_left=0
+[2026-11-09 20:41:26] ROUND match=1 round=2 winner=ENEMY time_left=49 hp_left=0
+[2026-11-09 20:41:29] MATCH no=1 player=PROFESSOR enemy=PROFESSOR result=LOSE score=0-2 duration_sec=29
+[2026-11-09 20:41:42] ROUND match=2 round=1 winner=ENEMY time_left=48 hp_left=0
+[2026-11-09 20:42:00] ROUND match=2 round=2 winner=ENEMY time_left=46 hp_left=0
+[2026-11-09 20:42:02] MATCH no=2 player=PROFESSOR enemy=PROFESSOR result=LOSE score=0-2 duration_sec=33
+[2026-11-09 20:42:18] ROUND match=3 round=1 winner=PLAYER time_left=46 hp_left=41
+[2026-11-09 20:42:36] ROUND match=3 round=2 winner=ENEMY time_left=46 hp_left=0
+[2026-11-09 20:42:53] ROUND match=3 round=3 winner=PLAYER time_left=47 hp_left=13
+[2026-11-09 20:42:55] MATCH no=3 player=PROFESSOR enemy=PROFESSOR result=WIN score=2-1 duration_sec=52
+[2026-11-09 20:43:28] MATCH_ABANDONED no=4 duration_sec=26
+[2026-11-09 20:43:28] SESSION_END no=5 session_sec=183 matches=3 wins=1 losses=2
+[2026-11-09 20:43:48] SESSION_START no=6
+[2026-11-09 20:43:56] SESSION_END no=6 session_sec=8 matches=0 wins=0 losses=0
+[2026-11-09 20:43:59] SESSION_START no=7
+[2026-11-09 20:44:28] ROUND match=1 round=1 winner=ENEMY time_left=46 hp_left=0
+[2026-11-09 20:44:47] ROUND match=1 round=2 winner=PLAYER time_left=45 hp_left=17
+[2026-11-09 20:45:05] ROUND match=1 round=3 winner=PLAYER time_left=46 hp_left=17
+[2026-11-09 20:45:08] MATCH no=1 player=NYA enemy=MYA result=WIN score=2-1 duration_sec=54
+[2026-11-09 20:45:35] MATCH_ABANDONED no=2 duration_sec=25
+[2026-11-09 20:45:35] SESSION_END no=7 session_sec=95 matches=1 wins=1 losses=0
