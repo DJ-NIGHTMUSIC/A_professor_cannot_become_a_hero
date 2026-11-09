@@ -63,3 +63,30 @@
 [2026-11-09 22:21:02] SESSION_END no=11 session_sec=10 matches=0 wins=0 losses=0
 [2026-11-09 22:21:04] SESSION_START no=12
 [2026-11-09 22:21:12] SESSION_END no=12 session_sec=7 matches=0 wins=0 losses=0
+[2026-11-09 22:23:26] SESSION_START no=13
+[2026-11-09 22:24:10] MATCH_ABANDONED no=1 duration_sec=27
+[2026-11-09 22:24:24] ROUND match=2 round=1 winner=PLAYER time_left=48 hp_left=21
+[2026-11-09 22:24:46] ROUND match=2 round=2 winner=PLAYER time_left=47 hp_left=14
+[2026-11-09 22:24:49] MATCH no=2 player=PROFESSOR enemy=PROFESSOR result=WIN score=2-0 duration_sec=38
+[2026-11-09 22:25:19] MATCH_ABANDONED no=3 duration_sec=27
+[2026-11-09 22:25:19] SESSION_END no=13 session_sec=113 matches=1 wins=1 losses=0
+[2026-11-09 22:25:25] SESSION_START no=14
+[2026-11-09 22:26:29] MATCH_ABANDONED no=1 duration_sec=63
+[2026-11-09 22:26:39] ROUND match=2 round=1 winner=ENEMY time_left=51 hp_left=0
+[2026-11-09 22:26:55] ROUND match=2 round=2 winner=ENEMY time_left=48 hp_left=0
+[2026-11-09 22:26:57] MATCH no=2 player=IMNOTHERO enemy=IMNOTHERO result=LOSE score=0-2 duration_sec=28
+[2026-11-09 22:27:37] MATCH_ABANDONED no=3 duration_sec=36
+[2026-11-09 22:27:37] SESSION_END no=14 session_sec=132 matches=1 wins=0 losses=1
+[2026-11-09 22:29:57] SESSION_START no=15
+[2026-11-09 22:30:17] ROUND match=1 round=1 winner=PLAYER time_left=55 hp_left=110
+[2026-11-09 22:30:30] ROUND match=1 round=2 winner=PLAYER time_left=50 hp_left=74
+[2026-11-09 22:30:33] MATCH no=1 player=PLAYER enemy=ENEMY result=WIN score=2-0 duration_sec=23
+[2026-11-09 22:31:08] MATCH_ABANDONED no=2 duration_sec=32
+[2026-11-09 22:31:23] ROUND match=3 round=1 winner=ENEMY time_left=46 hp_left=0
+[2026-11-09 22:31:36] ROUND match=3 round=2 winner=ENEMY time_left=51 hp_left=0
+[2026-11-09 22:31:38] MATCH no=3 player=HERO enemy=VILLAIN result=LOSE score=0-2 duration_sec=30
+[2026-11-09 22:31:52] ROUND match=4 round=1 winner=PLAYER time_left=49 hp_left=52
+[2026-11-09 22:32:06] ROUND match=4 round=2 winner=PLAYER time_left=50 hp_left=69
+[2026-11-09 22:32:08] MATCH no=4 player=HERO enemy=VILLAIN result=WIN score=2-0 duration_sec=29
+[2026-11-09 22:32:37] MATCH_ABANDONED no=5 duration_sec=25
+[2026-11-09 22:32:37] SESSION_END no=15 session_sec=159 matches=3 wins=2 losses=1
