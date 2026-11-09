@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import random
+import time
 
 # Windows DPI awareness must be set before pygame/SDL initializes.
 os.environ.setdefault("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2")
@@ -20,12 +21,13 @@ from .config import (
     CAMERA_SMOOTH, FPS, KEY_MAP, ROUND_TIME, SCREEN_H, SCREEN_W, TITLE, WINS_NEEDED,
 )
 from .fighter import ATTACK, IDLE, KO, HURT, Fighter, Intent, push_apart
+from .logger import PlayLogger
 from .stage import draw_banner, draw_hud, draw_stage, draw_text, text_width
 
 TITLE_SCREEN, COUNTDOWN, FIGHT, ROUND_END, MATCH_END, PAUSED, VICTORY_IMG = range(7)
 
 # 타이틀 화면 상태
-TITLE_MENU, TITLE_NICKNAME = range(2)
+TITLE_MENU, TITLE_NICKNAME, TITLE_RECORD = range(3)
 
 # 로고 이미지 캐시
 _logo_img = None
@@ -77,7 +79,7 @@ def _load_victory_image():
 
 
 def display_geometry(win_w: int, win_h: int) -> tuple[float, int, int]:
-    """창 크기에 맞는 균등 배율と表示バッファ寸法を返す。"""
+    """창 크기에 맞는 균등 배율과 표시 버퍼 크기를 반환한다."""
     ideal = min(max(1, win_w) / SCREEN_W, max(1, win_h) / SCREEN_H)
     if ideal < 1.0:
         scale = ideal
@@ -132,11 +134,19 @@ class Game:
         self.nickname_cursor = 0
         self.enemy_name = "ENEMY"        # 적 이름
         self.editing_enemy = False       # False=내 이름, True=적 이름 편집 중
-        self.menu_index = 0  # 0=플레이, 1=닉네임
+        self.menu_index = 0  # 0=플레이, 1=닉네임, 2=기록
+        self._record_stats: dict = {}
 
         self.p1 = Fighter(roll_character(self.rng), 1, SCREEN_W * 0.35)
         self.p2 = Fighter(roll_character(self.rng), 2, SCREEN_W * 0.65)
         self.ai = AI(self.difficulty)
+
+        # 플레이 기록 (headless 모드에서는 기록하지 않는다)
+        self.log = PlayLogger(enabled=not headless)
+        self._match_t0: float | None = None
+        self._match_no = 0
+        self._round_no = 0
+        self._match_done = True
         # _new_round() 는 _new_match() 에서 호출됨 - 초기화 시 호출 안 함
 
     # ---------------------------------------------------------------- 표시
@@ -244,6 +254,15 @@ class Game:
 
     # ---------------------------------------------------------------- 흐름
     def _new_match(self) -> None:
+        # 포기하고 나온 이전 경기가 있으면 '중도 종료'로 기록
+        if not self._match_done and self._match_t0 is not None:
+            self.log.match_abandoned(self._match_no,
+                                     time.monotonic() - self._match_t0)
+        self._match_t0 = time.monotonic()
+        self._match_no += 1
+        self._round_no = 0
+        self._match_done = False
+
         # 두 캐릭터는 아키타입이 겹치지 않게
         keys = list(ARCHETYPES)
         self.rng.shuffle(keys)
@@ -292,6 +311,10 @@ class Game:
             self.p1.wins += 1
         else:
             self.p2.wins += 1
+        self._round_no += 1
+        self.log.round_end(self._match_no, self._round_no,
+                           "PLAYER" if winner == 1 else "ENEMY",
+                           int(self.round_time), int(self.p1.hp))
         loser = self.p1 if winner == 2 else self.p2
         loser.hp = 0
         loser.state = KO
@@ -339,20 +362,32 @@ class Game:
 
         # 메뉴 선택
         if self.title_state == TITLE_MENU:
-            if self._hit("down") or self._hit("up"):
-                self.menu_index = 1 - self.menu_index
+            if self._hit("down"):
+                self.menu_index = (self.menu_index + 1) % 3
+            if self._hit("up"):
+                self.menu_index = (self.menu_index - 1) % 3
             if self._hit("confirm"):
                 if self.menu_index == 0:
                     # 플레이
                     self.difficulty = "normal"
                     self.ai.difficulty = self.difficulty
                     self._new_match()
+                elif self.menu_index == 2:
+                    # 기록 화면으로 전환 (들어갈 때 로그를 새로 집계)
+                    self._record_stats = self.log.stats()
+                    self.title_state = TITLE_RECORD
+                    self.title_anim = 0.0
                 else:
                     # 닉네임 설정으로 전환
                     self.title_state = TITLE_NICKNAME
                     self.title_anim = 0.0
                     self.editing_enemy = False
                     self.nickname_cursor = len(self.nickname)
+        elif self.title_state == TITLE_RECORD:
+            # Enter / Space / ESC 로 메뉴 복귀
+            if self._hit("confirm") or self._hit("pause"):
+                self.title_state = TITLE_MENU
+                self.title_anim = 0.0
         elif self.title_state == TITLE_NICKNAME:
             # 지금 편집 중인 이름 (내 이름 / 적 이름)
             text = self.enemy_name if self.editing_enemy else self.nickname
@@ -435,6 +470,7 @@ class Game:
             if self.p1.wins >= WINS_NEEDED or self.p2.wins >= WINS_NEEDED:
                 self.mode = MATCH_END
                 self.pressed.clear()
+                self._log_match_result()
             else:
                 self._new_round()
 
@@ -448,6 +484,23 @@ class Game:
                 self.pressed.clear()
             else:
                 self._new_match()
+
+    def _log_match_result(self) -> None:
+        """경기가 끝났을 때 결과를 기록 (한 경기에 한 번만)"""
+        if self._match_done:
+            return
+        self._match_done = True
+        secs = time.monotonic() - (self._match_t0 or time.monotonic())
+        self.log.match_end(self._match_no, self.nickname, self.enemy_name,
+                           self.p1.wins, self.p2.wins, secs)
+
+    def _on_exit(self) -> None:
+        # 경기 도중에 종료했다면 '중도 종료'로 기록
+        if not self._match_done and self._match_t0 is not None:
+            self.log.match_abandoned(self._match_no,
+                                     time.monotonic() - self._match_t0)
+            self._match_done = True
+        self.log.end_session()
 
     def _step_victory_img(self) -> None:
         # 이미지 화면에서 Enter -> 새 경기
@@ -508,7 +561,7 @@ class Game:
         stage_extra = 80  # WALL_L/R 확장분
         max_cam = stage_extra
         min_cam = -stage_extra
-        
+
         target = max(min_cam, min(max_cam, target))
 
         # 부드럽게 이동 (lerp)
@@ -620,7 +673,7 @@ class Game:
             draw_text(s, "RANDOM 1V1 PIXEL FIGHTER", SCREEN_W // 2 - 78, 100, (232, 226, 240), 1)
 
             # 메뉴 버튼들
-            y1, y2 = 140, 170
+            y1, y2, y3 = 140, 170, 200
             sel_color = (255, 212, 71)
             normal_color = (141, 132, 165)
 
@@ -634,10 +687,15 @@ class Game:
             n_text = "> NAME <" if self.menu_index == 1 else "  NAME  "
             draw_text(s, n_text, SCREEN_W // 2 - text_width(n_text) // 2, y2, n_color, 2)
 
+            # 기록 버튼
+            r_color = sel_color if self.menu_index == 2 else normal_color
+            r_text = "> RECORD <" if self.menu_index == 2 else "  RECORD  "
+            draw_text(s, r_text, SCREEN_W // 2 - text_width(r_text) // 2, y3, r_color, 2)
+
             draw_text(s, "A D MOVE   W JUMP   S CROUCH   H BLOCK   J K L ATTACK",
                       SCREEN_W // 2 - text_width("A D MOVE   W JUMP   S CROUCH   H BLOCK   J K L ATTACK") // 2,
-                      200, (141, 132, 165), 1)
-            draw_text(s, "ESC PAUSE", SCREEN_W // 2 - text_width("ESC PAUSE") // 2, 220, (100, 92, 122), 1)
+                      240, (141, 132, 165), 1)
+            draw_text(s, "ESC PAUSE", SCREEN_W // 2 - text_width("ESC PAUSE") // 2, 258, (100, 92, 122), 1)
 
         elif self.title_state == TITLE_NICKNAME:
             # 닉네임 설정 화면
@@ -654,6 +712,9 @@ class Game:
                       180, (141, 132, 165), 1)
             draw_text(s, "ESC BACK", SCREEN_W // 2 - text_width("ESC BACK") // 2, 200, (100, 92, 122), 1)
 
+        if self.title_state == TITLE_RECORD:
+            self._render_record(s)
+
         # 도트 전환 효과 (픽셀 단위로 화면을 덮음)
         if self.title_anim < 1.0:
             for dy in range(0, SCREEN_H, 4):
@@ -666,14 +727,51 @@ class Game:
                         surf_color = (10, 7, 16)
                         s.fill(surf_color, (dx, dy, 2, 2))
 
+    def _render_record(self, s) -> None:
+        st = self._record_stats or {}
+        white, gold = (232, 226, 240), (255, 212, 71)
+        gray = (141, 132, 165)
+
+        def hms(sec: int) -> str:
+            h, rem = divmod(int(sec), 3600)
+            m, sc = divmod(rem, 60)
+            return f"{h}H {m}M {sc}S" if h else f"{m}M {sc}S"
+
+        def center(text, y, color, scale=1):
+            draw_text(s, text, SCREEN_W // 2 - text_width(text, scale) // 2, y, color, scale)
+
+        matches = st.get("matches", 0)
+        wins = st.get("wins", 0)
+        rate = f"{wins / matches * 100:.1f}" if matches else "0.0"
+
+        center("RECORD", 104, gold, 2)
+        center(f"RUNS {st.get('runs', 0)}", 128, white, 2)
+        center(f"PLAY TIME {hms(st.get('total_sec', 0))}", 146, white, 2)
+        center(f"MATCHES {matches}   W {wins}  L {st.get('losses', 0)}", 164, white, 2)
+        center(f"WIN RATE {rate} PCT", 182, white, 2)
+
+        center("RECENT MATCHES", 208, gray, 1)
+        recent = st.get("recent", [])
+        if not recent:
+            center("NO MATCHES YET", 222, (100, 92, 122), 1)
+        for i, r in enumerate(recent):
+            win = r["result"] == "WIN"
+            line = f"{r['player']} VS {r['enemy']}   {r['result']} {r['score']}"
+            center(line, 222 + i * 11, gold if win else (255, 107, 107), 1)
+
+        center("ENTER BACK", SCREEN_H - 24, (100, 92, 122), 1)
+
     # ---------------------------------------------------------------- 루프
     def run(self) -> None:
-        while self.running:
-            self._handle_events()
-            self.step()
-            self.render()
-            self.pressed.clear()
-            self._blit_view()
-            pygame.display.flip()
-            self.clock.tick(FPS)
-        pygame.quit()
+        try:
+            while self.running:
+                self._handle_events()
+                self.step()
+                self.render()
+                self.pressed.clear()
+                self._blit_view()
+                pygame.display.flip()
+                self.clock.tick(FPS)
+        finally:
+            self._on_exit()  # 오류로 꺼져도 종료 기록을 남긴다
+            pygame.quit()
