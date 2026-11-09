@@ -40,3 +40,13 @@
 [2026-11-09 20:45:08] MATCH no=1 player=NYA enemy=MYA result=WIN score=2-1 duration_sec=54
 [2026-11-09 20:45:35] MATCH_ABANDONED no=2 duration_sec=25
 [2026-11-09 20:45:35] SESSION_END no=7 session_sec=95 matches=1 wins=1 losses=0
+[2026-11-09 20:46:33] SESSION_START no=8
+[2026-11-09 20:48:10] ROUND match=1 round=1 winner=ENEMY time_left=50 hp_left=0
+[2026-11-09 20:48:23] ROUND match=1 round=2 winner=ENEMY time_left=51 hp_left=0
+[2026-11-09 20:48:26] MATCH no=1 player=HERO enemy=VILLAIN result=LOSE score=0-2 duration_sec=26
+[2026-11-09 20:48:50] ROUND match=2 round=1 winner=ENEMY time_left=48 hp_left=0
+[2026-11-09 20:49:05] ROUND match=2 round=2 winner=PLAYER time_left=49 hp_left=53
+[2026-11-09 20:49:21] ROUND match=2 round=3 winner=PLAYER time_left=48 hp_left=18
+[2026-11-09 20:49:24] MATCH no=2 player=HERO enemy=VILLAIN result=WIN score=2-1 duration_sec=47
+[2026-11-09 20:49:38] MATCH_ABANDONED no=3 duration_sec=13
+[2026-11-09 20:49:38] SESSION_END no=8 session_sec=185 matches=2 wins=1 losses=1
